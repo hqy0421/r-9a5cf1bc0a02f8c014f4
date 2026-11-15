@@ -94,6 +94,80 @@ func main() {
 
 See [examples folder](https://github.com/gocolly/colly/tree/master/_examples) for more detailed examples.
 
+## Assembling versioned orders
+
+When a site exposes an order as a main page plus a set of detail pages, each
+detail page has its own version, and an updated main page may keep using some
+of the previous detail versions. Responses can arrive late, out of order or
+more than once.
+
+The `assembly` package turns those responses into complete, versioned orders.
+It is a standalone helper: import it next to `colly` and feed it from normal
+callbacks. Collectors that do not use it are unaffected.
+
+```go
+a := assembly.NewAssembler(assembly.WithPublisher(func(order assembly.CompleteOrder) {
+	// Only complete versions are published, in main-page detail order.
+	for _, d := range order.Details {
+		fmt.Println(order.OrderID, order.Version, d.Ref.Key, d.Ref.Version, string(d.Body))
+	}
+}))
+
+var refs []assembly.DetailRef // filled while parsing the main page
+
+c := colly.NewCollector()
+c.OnHTML("a.detail", func(e *colly.HTMLElement) {
+	refs = append(refs, assembly.DetailRef{
+		Key:     e.Attr("data-key"),
+		Version: e.Attr("data-version"),
+		URL:     e.Request.AbsoluteURL(e.Attr("href")),
+	})
+})
+c.OnResponse(func(r *colly.Response) {
+	// The detail's key/version are encoded in its URL in this example.
+	key, version := detailIdentity(r.Request.URL) // user supplied helper
+	_, _ = a.SubmitDetail(assembly.Detail{
+		OrderID: "A-100",
+		Ref:     assembly.DetailRef{Key: key, Version: version},
+		Body:    r.Body,
+	})
+})
+c.OnScraped(func(r *colly.Response) {
+	if r.Request.URL.Path != "/" {
+		return
+	}
+	manifest := assembly.Manifest{OrderID: "A-100", Version: mainVersion, Details: refs}
+	_ = a.SubmitManifest(manifest)
+	missing, _ := a.Missing(manifest) // reused versions are already cached
+	for _, ref := range missing {
+		_ = r.Request.Visit(ref.URL)
+	}
+})
+```
+
+The assembler's rules:
+
+- **Completeness first.** An order version is published only when every detail
+  listed by its main page is available at exactly the version the main page
+  requires.
+- **Manifest order.** Published details follow the main page's detail order,
+  regardless of arrival order.
+- **Version identity.** A late response for an old detail version only
+  satisfies a main page that asks for that old version. It cannot complete a
+  newer main page and cannot replace an already-published newer complete order.
+- **Order isolation.** Details are scoped by order ID; a response is never used
+  for a different order.
+- **No duplicates.** A repeated response for the same `(order, key, version)` is
+  ignored the second time and is never added twice.
+- **Reuse.** Fetched detail versions are retained, so a new main page can reuse
+  the versions it still references without fetching them again.
+- **Failure keeps the last good version.** A missing, failed (see `FailDetail`)
+  or cancelled (`Cancel`/`FailManifest`) version leaves the previously
+  published complete order in place. `Latest` always returns that order.
+
+Use `NaturalVersionCompare` (the default) for version ordering, or supply
+`WithVersionComparator` for custom schemes.
+
 ## Installation
 
 `go get github.com/gocolly/colly/v2`

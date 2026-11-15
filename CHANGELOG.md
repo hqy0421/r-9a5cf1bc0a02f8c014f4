@@ -1,3 +1,11 @@
+# Unreleased
+
+ - New `assembly` package for version-aware asynchronous assembly of orders
+   made of a main page and multiple versioned detail pages. Complete orders are
+   published only when every required detail version is present, in main-page
+   detail order; stale, duplicate, cross-order and failed responses never
+   produce or replace a complete order.
+
 # 2.1.0 - 2020.06.09
 
  - HTTP tracing support

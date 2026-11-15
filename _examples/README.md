@@ -4,6 +4,13 @@ This folder provides easy to understand code snippets on how to get started with
 
 To execute an example run `go run [example/example.go]`
 
+## Order assembly
+
+`order_assembly` shows how to combine `colly` with the `assembly` package: an
+order main page declares the detail pages (and their versions) that make up a
+complete order, and the assembler publishes a complete order only once every
+required detail version has arrived, in the main page's detail order.
+
 
 ## Demo
 
